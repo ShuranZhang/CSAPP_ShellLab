@@ -283,12 +283,45 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
+    struct job_t* job;
     char* id=argv[1];
+    pid_t pid =0;
+    int jid = 0;
     if(id==NULL){
         printf("No pid argument\n");
         return;
     }
+    if(id[0]=='%'){
+        jid = atoi(id+1);
+        job = getjobjid(jid);
+        if(job==NULL){
+            printf("%s No such job\n", argv[0]);
+            return;
+        }
+        pid = job->pid;
+    }else{
+        pid = atoi(id);
+        job = getjobpid(pid);
+          if(job==NULL){
+            printf("%s No such job\n", argv[0]);
+            return;
+        }
+    }
+    if(!strcmp(argv[0],"bg")){
+        kill(-pid,SIGCONT);
+        job->state=BG;
+        printf("[%d] [%s], %s\n", jid,pid,argv);
+        return;
+    }else if(!strcmp(argv[0],"fg")){
+        kill(-pid,SIGCONT);
+        job->state=FG;
+        waitfg(pid);
+        return;
+        //printf("[%d] [%s], %s\n", jid,pid,argv);
+
+    }
     return;
+
 }
 
 /* 
@@ -363,9 +396,11 @@ void sigtstp_handler(int sig)
  
     if(pid!=0 ){
         struct job_t *job = getjobpid(jobs,pid);
-
+        if(job->state == ST){  //if the job is already stopped
+            return;
+        }else{
             Kill(-pid,SIGTSTP);
-        
+        }
     }
     return;
 
