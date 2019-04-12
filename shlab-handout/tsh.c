@@ -176,7 +176,7 @@ void eval(char *cmdline)
         return;
     }
 
-    if(!builtin_command(argv)){ //non-builtin command case
+    if(!builtin_cmd(argv)){ //non-builtin command case
         if((pid = fork())==0){ //Child runs user job
             if(execve(argv[0],argv,environ)<0){
                 printf("Command Invalid\n"); //when input an invalid command
@@ -186,7 +186,7 @@ void eval(char *cmdline)
         //Parent waits for foreground job to terminate
         if(!bg){
             int status;
-            if(waitfg(pid,&status,0)<0){
+            if(waitfg(pid)<0){
                 unix_error("waitfg: waitpiderror");
             }
         }else{
@@ -265,6 +265,16 @@ int builtin_cmd(char **argv)
     if(!strcmp(argv[0],"&")){ //when user input &, it is a built in command
         return 1;
     }
+    if(!strcmp(argv[0],"jobs"))//job order
+    {
+        listjobs(jobs);
+        return 1;
+    }
+    if(!strcmp(argv[0],"bg") || !strcmp(argv[0],"fg")){
+        do_bgfg(argv);
+        return 1;
+    }
+
     return 0;     /* not a builtin command */
 }
 
@@ -273,6 +283,11 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
+    char* id=argv[1];
+    if(id==NULL){
+        printf("No pid argument\n");
+        return;
+    }
     return;
 }
 
@@ -281,6 +296,9 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
+     while(pid == fgpid(jobs)){
+        sleep(0);
+    }
     return;
 }
 
@@ -297,6 +315,7 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
+
     int olderrno = errno;
     pid = waitpid(-1,NULL,0);
     errno = olderrno;
@@ -309,8 +328,28 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
-    printf("Caught SIGINT!\n");
-    exit(0);
+    pid_t pid=fgpid(jobs);
+    int jid=pid2jid(pid);
+    //only deals with foreground process
+    if(pid!=0)
+    {
+        //signal sent by kill command case
+        if(pid==-sig)
+        {
+            printf("Job [%d] (%d) terminated by signal %d\n",pid2jid(-sig),-sig,2);
+            deletejob(jobs,-sig);
+        }
+        // send SIGINT singal to all foreground process
+        else if(sig==SIGINT)
+        {
+            kill(-pid,SIGINT);
+            printf("Job [%d] (%d) terminated by signal %d\n",jid,pid,sig);
+            deletejob(jobs,pid);
+        }
+
+    }
+    return;
+
 }
 
 /*
@@ -320,7 +359,16 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig) 
 {
+    pid_t pid = fgpid(jobs);
+ 
+    if(pid!=0 ){
+        struct job_t *job = getjobpid(jobs,pid);
+
+            Kill(-pid,SIGTSTP);
+        
+    }
     return;
+
 }
 
 /*********************
